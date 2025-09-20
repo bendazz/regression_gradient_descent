@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gradient Descent Illustration: Intercept-only Linear Regression</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --panel: #f7f7f9;
+        --text: #1f2328;
+        --muted: #656d76;
+        --accent: #0d6efd;
+        --accent-2: #ff6b6b;
+        --grid: #e6e8eb;
+        --axis: #a0a6ad;
+        --point: #0a7b83;
+        --line: #8b5cf6;
+        --shadow: rgba(0,0,0,0.04);
+      }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        line-height: 1.45;
+      }
+
+      header {
+        padding: 1rem 1.25rem 0.5rem;
+      }
+
+      h1 {
+        font-size: 1.25rem;
+        margin: 0 0 0.25rem 0;
+      }
+
+      .sub {
+        color: var(--muted);
+        font-size: 0.95rem;
+        margin: 0.25rem 0 0 0;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1rem;
+        align-items: center;
+        background: var(--panel);
+        border: 1px solid var(--grid);
+        box-shadow: 0 1px 0 var(--shadow);
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        margin: 0.5rem 1.25rem 1rem;
+      }
+
+      .row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      input[type="range"] {
+        width: min(56vw, 560px);
+      }
+
+      .value-badge {
+        font-variant-numeric: tabular-nums;
+        background: #eef6ff;
+        color: #0b62d6;
+        border: 1px solid #cfe3ff;
+        padding: 0.15rem 0.45rem;
+        border-radius: 6px;
+      }
+
+      .stats {
+        display: flex;
+        gap: 1rem;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        padding: 0 1.25rem 1.25rem;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--grid);
+        border-radius: 12px;
+        box-shadow: 0 1px 0 var(--shadow);
+        padding: 0.75rem 0.75rem 0.25rem 0.75rem;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .panel h2 {
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 0 0 0.25rem 0.25rem;
+        color: var(--muted);
+      }
+
+      canvas {
+        width: 100%;
+        height: 360px;
+        display: block;
+        border-radius: 10px;
+        background: #fff;
+        border: 1px solid var(--grid);
+      }
+
+      .equation {
+        margin: 0.5rem 0.25rem 0.25rem;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      footer {
+        padding: 0.5rem 1.25rem 1.5rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+        input[type="range"] { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Linear Regression as Minimization (Intercept-only)</h1>
+    </header>
+
+    <section class="controls" aria-label="Controls">
+      <div class="row">
+        <label for="bSlider"><strong>b</strong> (intercept):</label>
+        <input id="bSlider" type="range" min="0" max="10" step="0.01" value="3.50" />
+        <span class="value-badge" id="bValue">b = 3.50</span>
+      </div>
+      <div class="stats" id="stats">
+        <!-- Filled by JS: MSE(b), gradient, b* -->
+      </div>
+    </section>
+
+    <main class="layout">
+      <section class="panel">
+        <h2>Left: Data and model y = b</h2>
+        <canvas id="dataCanvas" width="800" height="480" aria-label="Data plot with two points and horizontal line y=b"></canvas>
+      </section>
+      <section class="panel">
+        <h2>Right: Objective MSE(b)</h2>
+        <canvas id="mseCanvas" width="800" height="480" aria-label="MSE(b) curve with current b"></canvas>
+        <div id="mseEquation" class="equation" aria-label="Equation of MSE as a function of b"></div>
+      </section>
+    </main>
+
+    <!-- Practice section -->
+    <section class="controls" aria-label="Practice controls" style="margin-top: 0;">
+      <div class="row" style="gap: 0.75rem 1rem">
+        <strong>Practice:</strong>
+        <button id="practiceNewBtn">New practice</button>
+        <button id="practiceRevealBtn">Reveal solution</button>
+      </div>
+    </section>
+
+    <section class="layout" aria-label="Practice plots">
+      <section class="panel">
+        <h2>Practice — Data and y = b</h2>
+        <canvas id="practiceDataCanvas" width="800" height="420" aria-label="Practice data plot"></canvas>
+      </section>
+      <section class="panel">
+        <h2>Practice — MSE(b)</h2>
+        <canvas id="practiceMseCanvas" width="800" height="420" aria-label="Practice MSE(b) plot"></canvas>
+        <div id="practiceEquation" class="equation" style="display:none" aria-live="polite"></div>
+      </section>
+    </section>
+
+    
+
+    <script>
+      // Utility: handle crisp canvas on HiDPI screens
+      function setupHiDPICanvas(canvas) {
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = Math.round(rect.width * dpr);
+        canvas.height = Math.round(rect.height * dpr);
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // scale logical drawing
+        return ctx;
+      }
+
+      // World <-> Screen mapping helper for 2D plots
+      class Plot2D {
+        constructor(canvas, world) {
+          this.canvas = canvas;
+          this.world = { ...world }; // {xmin,xmax,ymin,ymax}
+          this.ctx = setupHiDPICanvas(canvas);
+          this.margin = { left: 40, right: 16, top: 16, bottom: 36 };
+        }
+        resize() {
+          this.ctx = setupHiDPICanvas(this.canvas);
+        }
+        get innerWidth() {
+          const rect = this.canvas.getBoundingClientRect();
+          return rect.width - this.margin.left - this.margin.right;
+        }
+        get innerHeight() {
+          const rect = this.canvas.getBoundingClientRect();
+          return rect.height - this.margin.top - this.margin.bottom;
+        }
+        xToPx(x) {
+          const { xmin, xmax } = this.world;
+          const t = (x - xmin) / (xmax - xmin);
+          return this.margin.left + t * this.innerWidth;
+        }
+        yToPx(y) {
+          const { ymin, ymax } = this.world;
+          const t = (y - ymin) / (ymax - ymin);
+          return this.margin.top + (1 - t) * this.innerHeight;
+        }
+        pxToX(px) {
+          const { xmin, xmax } = this.world;
+          const t = (px - this.margin.left) / this.innerWidth;
+          return xmin + t * (xmax - xmin);
+        }
+        pxToY(py) {
+          const { ymin, ymax } = this.world;
+          const t = 1 - (py - this.margin.top) / this.innerHeight;
+          return ymin + t * (ymax - ymin);
+        }
+        clear() {
+          const { width, height } = this.canvas.getBoundingClientRect();
+          this.ctx.clearRect(0, 0, width, height);
+          this.ctx.fillStyle = '#ffffff';
+          this.ctx.fillRect(0, 0, width, height);
+        }
+        drawGrid(ticksX = 10, ticksY = 10) {
+          const ctx = this.ctx;
+          const { xmin, xmax, ymin, ymax } = this.world;
+          ctx.save();
+          ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid');
+          ctx.lineWidth = 1;
+
+          // Vertical grid
+          const dx = (xmax - xmin) / ticksX;
+          for (let i = 0; i <= ticksX; i++) {
+            const x = xmin + i * dx;
+            const px = this.xToPx(x);
+            ctx.beginPath();
+            ctx.moveTo(px, this.margin.top);
+            ctx.lineTo(px, this.margin.top + this.innerHeight);
+            ctx.stroke();
+          }
+          // Horizontal grid
+          const dy = (ymax - ymin) / ticksY;
+          for (let j = 0; j <= ticksY; j++) {
+            const y = ymin + j * dy;
+            const py = this.yToPx(y);
+            ctx.beginPath();
+            ctx.moveTo(this.margin.left, py);
+            ctx.lineTo(this.margin.left + this.innerWidth, py);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+        drawAxes() {
+          const ctx = this.ctx;
+          ctx.save();
+          ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--axis');
+          ctx.lineWidth = 1.5;
+          // X axis (bottom)
+          ctx.beginPath();
+          ctx.moveTo(this.margin.left, this.margin.top + this.innerHeight);
+          ctx.lineTo(this.margin.left + this.innerWidth, this.margin.top + this.innerHeight);
+          ctx.stroke();
+          // Y axis (left)
+          ctx.beginPath();
+          ctx.moveTo(this.margin.left, this.margin.top);
+          ctx.lineTo(this.margin.left, this.margin.top + this.innerHeight);
+          ctx.stroke();
+          ctx.restore();
+        }
+        drawXTicks(count = 5, formatter = (v)=>v.toFixed(0)) {
+          const ctx = this.ctx;
+          const { xmin, xmax } = this.world;
+          const y = this.margin.top + this.innerHeight + 16;
+          ctx.save();
+          ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted');
+          ctx.font = '12px system-ui, sans-serif';
+          for (let i = 0; i <= count; i++) {
+            const t = i / count;
+            const x = xmin + t * (xmax - xmin);
+            const px = this.xToPx(x);
+            ctx.textAlign = 'center';
+            ctx.fillText(formatter(x), px, y);
+          }
+          ctx.restore();
+        }
+        drawYTicks(count = 5, formatter = (v)=>v.toFixed(0)) {
+          const ctx = this.ctx;
+          const { ymin, ymax } = this.world;
+          const x = this.margin.left - 8;
+          ctx.save();
+          ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted');
+          ctx.font = '12px system-ui, sans-serif';
+          for (let i = 0; i <= count; i++) {
+            const t = i / count;
+            const yv = ymin + t * (ymax - ymin);
+            const py = this.yToPx(yv) + 4;
+            ctx.textAlign = 'right';
+            ctx.fillText(formatter(yv), x, py);
+          }
+          ctx.restore();
+        }
+      }
+
+      // Problem setup: two points (fixed, but could be extended to draggable)
+      const points = [
+        { x: 2, y: 2.5 },
+        { x: 7, y: 6.5 },
+      ];
+
+      // World ranges
+      const worldLeft = { xmin: 0, xmax: 10, ymin: 0, ymax: 10 };
+      const worldRight = { xmin: 0, xmax: 10, ymin: 0, ymax: 12 }; // MSE range will adapt but reserve headroom
+
+      // Elements
+      const dataCanvas = document.getElementById('dataCanvas');
+      const mseCanvas = document.getElementById('mseCanvas');
+  const bSlider = document.getElementById('bSlider');
+      const bValue = document.getElementById('bValue');
+      const statsEl = document.getElementById('stats');
+  const mseEqEl = document.getElementById('mseEquation');
+      
+
+      // Plots
+      let dataPlot = new Plot2D(dataCanvas, worldLeft);
+      let msePlot = new Plot2D(mseCanvas, worldRight);
+
+      // MSE helpers
+      function mseOfWith(pts, b) {
+        const n = pts.length;
+        let s = 0;
+        for (const p of pts) {
+          const r = p.y - b;
+          s += r * r;
+        }
+        return s / n;
+      }
+      function mseOf(b) { return mseOfWith(points, b); }
+      function bStarWith(pts) { return pts.reduce((acc, p) => acc + p.y, 0) / pts.length; }
+      function bStar() { return bStarWith(points); }
+
+      function format(num) {
+        return Number(num).toFixed(2);
+      }
+
+      function renderStats(b) {
+        statsEl.innerHTML = `<span>MSE(b) = <strong>${format(mseOf(b))}</strong></span>`;
+      }
+
+      // Generic left plot drawer
+      function drawLeftGeneric(plot, pts, b) {
+        const ctx = plot.ctx;
+        plot.clear();
+        plot.drawGrid(10, 10);
+        plot.drawAxes();
+        plot.drawXTicks(5);
+        plot.drawYTicks(5);
+
+        // Draw residual vertical segments from each point to line y=b
+        ctx.save();
+        ctx.strokeStyle = '#ff9aa2';
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 2;
+        for (const p of pts) {
+          const px = plot.xToPx(p.x);
+          const py = plot.yToPx(p.y);
+          const pLine = plot.yToPx(b);
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(px, pLine);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Draw line y=b
+        ctx.save();
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line');
+        ctx.lineWidth = 3;
+        const x0 = plot.xToPx(plot.world.xmin);
+        const x1 = plot.xToPx(plot.world.xmax);
+        const yb = plot.yToPx(b);
+        ctx.beginPath();
+        ctx.moveTo(x0, yb);
+        ctx.lineTo(x1, yb);
+        ctx.stroke();
+  // Label: y = b
+  const label = `y = ${format(b)}`;
+  ctx.font = '12px system-ui, sans-serif';
+  const pad = 6;
+  let lx = x1 - 60; // near the right side
+  let ly = yb - 8;  // slightly above the line
+  // clamp to plot bounds
+        const minX = plot.margin.left + 4;
+        const maxX = plot.margin.left + plot.innerWidth - 60;
+        const minY = plot.margin.top + 12;
+        const maxY = plot.margin.top + plot.innerHeight - 4;
+  lx = Math.max(minX, Math.min(maxX, lx));
+  ly = Math.max(minY, Math.min(maxY, ly));
+  // halo for readability
+  ctx.save();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#ffffff';
+  ctx.strokeText(label, lx, ly);
+  ctx.restore();
+  ctx.fillStyle = '#333';
+  ctx.fillText(label, lx, ly);
+        ctx.restore();
+
+        // Draw points
+        for (const p of pts) {
+          drawPoint(ctx, plot.xToPx(p.x), plot.yToPx(p.y));
+        }
+      }
+
+      // Original convenience wrappers
+      function drawLeft(b) { drawLeftGeneric(dataPlot, points, b); }
+
+      function drawPoint(ctx, x, y) {
+        ctx.save();
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--point');
+        ctx.strokeStyle = '#0a5f66';
+        ctx.lineWidth = 1.25;
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Generic right plot drawer
+      function drawRightGeneric(plot, pts, b, showMinLabel = true) {
+        const ctx = plot.ctx;
+        plot.clear();
+        // Adapt y-range to current data for better visibility
+        const bMin = parseFloat(bSlider.min);
+        const bMax = parseFloat(bSlider.max);
+        const samples = 200;
+        let minM = Infinity, maxM = -Infinity;
+        for (let i = 0; i <= samples; i++) {
+          const t = i / samples;
+          const bb = bMin + t * (bMax - bMin);
+          const m = mseOfWith(pts, bb);
+          if (m < minM) minM = m;
+          if (m > maxM) maxM = m;
+        }
+        const pad = 0.15 * (maxM - minM || 1);
+        plot.world = { ...plot.world, xmin: bMin, xmax: bMax, ymin: Math.max(0, minM - pad), ymax: maxM + pad };
+
+        plot.drawGrid(10, 8);
+        plot.drawAxes();
+        plot.drawXTicks(5, (v)=>v.toFixed(1));
+        plot.drawYTicks(5, (v)=>v.toFixed(1));
+
+        // Draw MSE curve
+        ctx.save();
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent');
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        for (let i = 0; i <= samples; i++) {
+          const t = i / samples;
+          const bb = bMin + t * (bMax - bMin);
+          const m = mseOfWith(pts, bb);
+          const px = plot.xToPx(bb);
+          const py = plot.yToPx(m);
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        // Draw current point on MSE curve
+        const mNow = mseOfWith(pts, b);
+        drawMarker(ctx, plot.xToPx(b), plot.yToPx(mNow));
+
+        // Draw minimizer b*
+        const bs = bStarWith(pts);
+        const ms = mseOfWith(pts, bs);
+        drawMinMarker(ctx, plot.xToPx(bs), plot.yToPx(ms));
+        if (showMinLabel) drawMinLabel(ctx, plot, bs, ms, `b* = ${format(bs)}`);
+      }
+
+      // Original convenience wrapper
+      function drawRight(b) { drawRightGeneric(msePlot, points, b, true); }
+
+      function drawMarker(ctx, x, y) {
+        ctx.save();
+        ctx.fillStyle = '#dc3545';
+        ctx.strokeStyle = '#b02a37';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawMinMarker(ctx, x, y) {
+        ctx.save();
+        ctx.fillStyle = '#22c55e';
+        ctx.strokeStyle = '#16a34a';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 7);
+        ctx.lineTo(x + 6, y + 5);
+        ctx.lineTo(x - 6, y + 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // vertical guide
+        ctx.save();
+        ctx.strokeStyle = '#16a34a77';
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, msePlot.margin.top + msePlot.innerHeight);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawMinLabel(ctx, plot, b, mse, text) {
+        const x = plot.xToPx(b);
+        const y = plot.yToPx(mse);
+        ctx.save();
+        ctx.font = '12px system-ui, sans-serif';
+        const padX = 6, padY = 4;
+        const metrics = ctx.measureText(text);
+        const w = metrics.width + padX * 2;
+        const h = 16 + padY * 2; // approx height
+        let rx = x + 8;
+        let ry = y - h - 6;
+        // clamp within plot drawing area
+        const minX = plot.margin.left + 2;
+        const maxX = plot.margin.left + plot.innerWidth - w - 2;
+        const minY = plot.margin.top + 2;
+        const maxY = plot.margin.top + plot.innerHeight - h - 2;
+        rx = Math.max(minX, Math.min(maxX, rx));
+        ry = Math.max(minY, Math.min(maxY, ry));
+
+        // bubble
+        ctx.fillStyle = '#eef6ff';
+        ctx.strokeStyle = '#cfe3ff';
+        ctx.lineWidth = 1;
+        roundRect(ctx, rx, ry, w, h, 6);
+        ctx.fill();
+        ctx.stroke();
+        // text
+        ctx.fillStyle = '#0b62d6';
+        ctx.textBaseline = 'top';
+        ctx.fillText(text, rx + padX, ry + padY);
+        ctx.restore();
+      }
+
+      function roundRect(ctx, x, y, w, h, r) {
+        const rr = Math.min(r, w/2, h/2);
+        ctx.beginPath();
+        ctx.moveTo(x + rr, y);
+        ctx.lineTo(x + w - rr, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+        ctx.lineTo(x + w, y + h - rr);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+        ctx.lineTo(x + rr, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+        ctx.lineTo(x, y + rr);
+        ctx.quadraticCurveTo(x, y, x + rr, y);
+        ctx.closePath();
+      }
+
+      function renderAll() {
+        const b = parseFloat(bSlider.value);
+        bValue.textContent = `b = ${format(b)}`;
+        renderStats(b);
+        drawLeft(b);
+        drawRight(b);
+        renderEquation();
+      }
+
+      // -------- Practice mode --------
+      const practiceDataCanvas = document.getElementById('practiceDataCanvas');
+      const practiceMseCanvas = document.getElementById('practiceMseCanvas');
+      const practiceEquationEl = document.getElementById('practiceEquation');
+      const practiceNewBtn = document.getElementById('practiceNewBtn');
+      const practiceRevealBtn = document.getElementById('practiceRevealBtn');
+
+      let practicePoints = [ { x: 1.5, y: 4.0 }, { x: 8.0, y: 6.0 } ];
+      let practiceB = 5.0;
+      let practiceDataPlot = new Plot2D(practiceDataCanvas, { xmin: 0, xmax: 10, ymin: 0, ymax: 10 });
+      let practiceMsePlot = new Plot2D(practiceMseCanvas, { xmin: 0, xmax: 10, ymin: 0, ymax: 12 });
+
+      function randomPractice() {
+        // Sometimes use 3 points
+        const n = Math.random() < 0.5 ? 2 : 3;
+        const xs = [ +(1 + Math.random() * 3).toFixed(1), +(7 + Math.random() * 2).toFixed(1) ];
+        const ys = [ +(1 + Math.random() * 8).toFixed(1), +(1 + Math.random() * 8).toFixed(1) ];
+        // Ensure some separation between first two y's
+        if (Math.abs(ys[1] - ys[0]) < 1) ys[1] = Math.min(9, Math.max(1, ys[0] + (Math.random() < 0.5 ? -2 : 2)));
+
+        if (n === 3) {
+          // Third point somewhere middle x, varied y
+          xs.push( +(4 + Math.random() * 2).toFixed(1) );
+          ys.push( +(1 + Math.random() * 8).toFixed(1) );
+        }
+        practicePoints = xs.map((x, i) => ({ x, y: ys[i] }));
+        const meanY = ys.reduce((a, v) => a + v, 0) / ys.length;
+        practiceB = +(Math.max(0, Math.min(10, meanY + (Math.random() * 2 - 1)))).toFixed(2);
+      }
+
+      function renderPractice() {
+        drawLeftGeneric(practiceDataPlot, practicePoints, practiceB);
+        drawRightGeneric(practiceMsePlot, practicePoints, practiceB, true);
+      }
+
+      function renderPracticeEquation() {
+        const yVals = practicePoints.map(p => p.y.toFixed(2));
+        const n = yVals.length;
+        const terms = yVals.map(y => `(${y} − b)<sup>2</sup>`).join(' + ');
+        practiceEquationEl.innerHTML = `y = MSE(b) = (1/${n})[ ${terms} ]`;
+      }
+
+      practiceNewBtn.addEventListener('click', () => {
+        randomPractice();
+        practiceEquationEl.style.display = 'none';
+        renderPractice();
+      });
+      practiceRevealBtn.addEventListener('click', () => {
+        renderPracticeEquation();
+        practiceEquationEl.style.display = '';
+      });
+
+      function renderEquation() {
+        // y = (1/n) Σ (y_i - b)^2, here n = 2
+        const yVals = points.map(p => p.y);
+    const eq = `y = MSE(b) = (1/2)[ (${format(yVals[0])} − b)<sup>2</sup> + (${format(yVals[1])} − b)<sup>2</sup> ]`;
+        // Use HTML with <sup> for squared if preferred, but keep it plain text with unicode squared here
+    mseEqEl.innerHTML = eq;
+      }
+
+      // Handle resize
+      function onResize() {
+        dataPlot.resize();
+        msePlot.resize();
+        practiceDataPlot.resize();
+        practiceMsePlot.resize();
+        renderAll();
+        renderPractice();
+      }
+      window.addEventListener('resize', onResize);
+
+      // Slider interaction
+      bSlider.addEventListener('input', renderAll);
+
+      // (Gradient descent controls removed to declutter the top UI.)
+
+      // Initial render
+      // Set slider initial to mean of y's for a nice starting point
+      bSlider.value = bStar().toFixed(2);
+      renderAll();
+      // Initialize practice
+      randomPractice();
+      renderPractice();
+    </script>
+  </body>
+  </html>
