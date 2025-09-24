@@ -427,7 +427,18 @@
 
         // Draw points
         for (const p of pts) {
-          drawPoint(ctx, plot.xToPx(p.x), plot.yToPx(p.y));
+         const px = plot.xToPx(p.x);
+         const py = plot.yToPx(p.y);
+         drawPoint(ctx, px, py);
+         // Draw coordinate label
+         ctx.save();
+         ctx.font = '12px system-ui, sans-serif';
+         ctx.fillStyle = '#333';
+         ctx.textAlign = 'left';
+         ctx.textBaseline = 'top';
+         const label = `(${p.x.toFixed(2)}, ${p.y.toFixed(2)})`;
+         ctx.fillText(label, px + 8, py - 2);
+         ctx.restore();
         }
       }
 
